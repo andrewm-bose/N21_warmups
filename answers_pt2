@@ -1,0 +1,43 @@
+-- For each product in the database, calculate how many more orders where placed in 
+-- each month compared to the previous month.
+-- **Make sure every month is accounted for (no gaps)
+
+WITH dates_products as (
+SELECT 
+	product_id, 
+	dates::date
+FROM generate_series((SELECT MIN(order_date) FROM orders)::date,
+					 (SELECT MAX(order_date) FROM orders)::date, 
+					 '1 day'::interval) as dates
+	CROSS JOIN (SELECT DISTINCT product_id FROM products) as products_list
+ORDER BY product_id, dates
+),
+product_details as (
+	SELECT 
+		o.order_id,
+		od.product_id,
+		od.quantity,
+		o.order_date
+	FROM order_details as od 
+		JOIN orders as o ON od.order_id=o.order_id),
+monthly_totals as (
+	SELECT 
+		dp.product_id,
+		EXTRACT('year' FROM dates) as year,
+		EXTRACT('month' FROM dates) as month,
+		COALESCE(SUM(quantity),0) as monthly_qty
+	FROM dates_products as dp
+		LEFT JOIN product_details as pd ON dp.product_id=pd.product_id AND
+			dp.dates=pd.order_date
+	GROUP BY dp.product_id, EXTRACT('year' FROM dates), EXTRACT('month' FROM dates)
+	ORDER BY dp.product_id, year, month
+),
+monthly_totals_w_prev as (
+	SELECT *,
+		COALESCE(LAG(monthly_qty,1) OVER(PARTITION BY product_id ORDER BY year, month), 0)
+		as previous_month
+	FROM monthly_totals
+)
+SELECT *,
+	monthly_qty - previous_month as difference
+FROM monthly_totals_w_prev;

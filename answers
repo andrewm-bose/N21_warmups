@@ -1,0 +1,98 @@
+-- For each product in the database, calculate how many more orders where placed in 
+-- each month compared to the previous month.
+
+-- IMPORTANT! This is going to be a 2-day warmup! FOR NOW, assume that each product
+-- has sales every month. Do the calculations so that you're comparing to the previous 
+-- month where there were sales.
+-- For example, product_id #1 has no sales for October 1996. So compare November 1996
+-- to September 1996 (the previous month where there were sales):
+-- So if there were 27 units sold in November and 20 in September, the resulting 
+-- difference should be 27-7 = 7.
+-- (Later we will work towards filling in the missing months.)
+
+-- BIG HINT: Look at the expected results, how do you get year and month out of datetime in postgresql?
+
+-- STEP 1,2
+WITH order_info AS ( --first, get the basic necessary info together
+SELECT *,
+	od.unit_price as od_unit_price,--this isn't necessary, but avoids an 'ambiguous' error I was getting
+	p.product_id as p_product_id--this isn't necessary, but avoids an 'ambiguous' error I was getting
+FROM orders as o 
+	JOIN order_details as od ON o.order_id = od.order_id
+	JOIN products as p ON od.product_id = p.product_id
+	JOIN customers as c ON o.customer_id = c.customer_id
+)
+SELECT p_product_id, -- get the units sold for each product, per month, per year
+	EXTRACT(year FROM order_date) as year,
+	EXTRACT(month FROM order_date) as month,
+	SUM(quantity) units_sold
+FROM order_info
+GROUP BY p_product_id, EXTRACT(year FROM order_date), EXTRACT(month FROM order_date);
+
+-- STEP 1,2,3
+WITH order_info AS ( --first, get the basic necessary info together
+SELECT *,
+	od.unit_price as od_unit_price,--this isn't necessary, but avoids an 'ambiguous' error I was getting
+	p.product_id as p_product_id--this isn't necessary, but avoids an 'ambiguous' error I was getting
+FROM orders as o 
+	JOIN order_details as od ON o.order_id = od.order_id
+	JOIN products as p ON od.product_id = p.product_id
+	JOIN customers as c ON o.customer_id = c.customer_id
+)
+SELECT p_product_id,
+	EXTRACT(year FROM order_date) as year,
+	EXTRACT(month FROM order_date) as month,
+	SUM(quantity) units_sold
+FROM order_info
+GROUP BY p_product_id, EXTRACT(year FROM order_date), EXTRACT(month FROM order_date);
+
+-- STEP 1,2,3,4
+WITH order_info AS ( --first, get the basic necessary info together
+SELECT *,
+	od.unit_price as od_unit_price,--this isn't necessary, but avoids an 'ambiguous' error I was getting
+	p.product_id as p_product_id--this isn't necessary, but avoids an 'ambiguous' error I was getting
+FROM orders as o 
+	JOIN order_details as od ON o.order_id = od.order_id
+	JOIN products as p ON od.product_id = p.product_id
+	JOIN customers as c ON o.customer_id = c.customer_id
+),
+monthly_totals as (-- get the units sold for each product, per month, per year
+SELECT p_product_id,
+	EXTRACT(year FROM order_date) as year,
+	EXTRACT(month FROM order_date) as month,
+	SUM(quantity) units_sold
+FROM order_info
+GROUP BY p_product_id, EXTRACT(year FROM order_date), EXTRACT(month FROM order_date)
+) 
+SELECT *, --create the column for 'previous month'
+	LAG(units_sold,1) OVER(PARTITION BY p_product_id ORDER BY year,month) as prev_month
+FROM monthly_totals
+ORDER BY p_product_id, year, month;
+
+
+-- STEPS 1,2,3,4,5
+WITH order_info AS ( --first, get the basic necessary info together
+SELECT *,
+	od.unit_price as od_unit_price,--this isn't necessary, but avoids an 'ambiguous' error I was getting
+	p.product_id as p_product_id--this isn't necessary, but avoids an 'ambiguous' error I was getting
+FROM orders as o 
+	JOIN order_details as od ON o.order_id = od.order_id
+	JOIN products as p ON od.product_id = p.product_id
+	JOIN customers as c ON o.customer_id = c.customer_id
+),
+monthly_totals as (-- get the units sold for each product, per month, per year
+SELECT p_product_id,
+	EXTRACT(year FROM order_date) as year,
+	EXTRACT(month FROM order_date) as month,
+	SUM(quantity) units_sold
+FROM order_info
+GROUP BY p_product_id, EXTRACT(year FROM order_date), EXTRACT(month FROM order_date)
+),
+monthly_totals_w_prev as ( --create the column for 'previous month'
+SELECT *,
+	LAG(units_sold,1) OVER(PARTITION BY p_product_id ORDER BY year,month) as prev_month
+FROM monthly_totals
+ORDER BY p_product_id, year, month)
+SELECT *,
+	COALESCE(units_sold - prev_month,0) as difference -- calculate the difference between months
+FROM monthly_totals_w_prev;
